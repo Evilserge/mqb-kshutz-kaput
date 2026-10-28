@@ -59,7 +59,7 @@
 * **Ordinary users do NOT need this option for retrofitting.**
 * Switches `Xcp_BootControl` into active mode `0x55` at startup on **`CAN0`**:
   * `T12a` connector: pin **`3 = CAN-H`**, pin **`4 = CAN-L`**, **`500 kbit/s`**;
-  * `Extended 29-bit CAN`: master TX **`0x1BFE7E01`** → slave RX **`0x1BFE7E00`**.
+  * `Extended 29-bit CAN`: master TX **`0x1BFE7E01`** → camera TX **`0x1BFE7E00`**.
 
 ### 5. Hardware-Safe `ODIS-E` Package Builder (`PART1` + `PART2`)
 * Packs `DB_01` **strictly uncompressed (`method=00`, `<SECURITY-METHOD>SIG_SHA1-RSA1024_S</SECURITY-METHOD>`)**, preventing `0220` bootloader LZSS overlapping-RLE faults (`7F 36 72` / `generalProgrammingFailure`).
@@ -80,9 +80,12 @@ When generating ODX containers for `ODIS-E`, two subfolders (`PART1` and `PART2`
 
 When built with `--enable-xcp-can0`, the camera enables its standard **ASAM MCD-1 XCP v1.0** slave stack (`EB tresos Xcp`) at boot on the private **`CAN0`** bus (*Fusion CAN*, `T12a` connector: pin `3 = CAN-H`, pin `4 = CAN-L`, Classical CAN 2.0B `500 kbit/s` — **separate physical pair from the vehicle `CAN1` bus on pins `1`/`2`!**):
 
-* **CAN IDs (`Extended 29-bit`):** master TX **`0x1BFE7E01`** → camera RX **`0x1BFE7E00`**.
+* **CAN IDs (`Extended 29-bit`):** master TX **`0x1BFE7E01`** → camera TX **`0x1BFE7E00`**.
 * **Framing:** **`Little-Endian` (Intel)** byte order, `MAX_CTO = 8` B, `MAX_DTO = 8` B, *Slave Block Mode* enabled.
 * **Authentication (`Seed & Key`):** **none** — `GET_SEED (0xF8)` and `UNLOCK (0xF7)` are compiled out; full 32-bit `RH850` address-space reads (`CodeFlash`, `DataFlash`, `RAM`, `MMIO`) and `RAM` writes are immediately available right after `CONNECT`.
+
+> [!NOTE]
+> In **ASAM XCP / CCP** (just like in **UDS** `0x34 RequestDownload` / `0x35 RequestUpload`), transfer direction is defined relative to the Master-above-Slave hierarchy: **`UPLOAD` = READ from ECU up to PC**, whereas **`DOWNLOAD` = WRITE from PC down into ECU RAM**.
 
 ### Core Commands & Worked CAN Frames
 
@@ -90,11 +93,11 @@ When built with `--enable-xcp-can0`, the camera enables its standard **ASAM MCD-
 | :--- | :--- | :--- | :--- |
 | **`CONNECT` (`0xFF`)** | `FF 00` | `FF 04 40 08 08 00 01 01` | Open session (`Mode = 00`; `0x40` = Intel LE + Slave Block Mode, `CTO/DTO = 8`, XCP `1.0`) |
 | **`GET_STATUS` (`0xFD`)** | `FD` | `FF <sess> 00 00 <cfg_LE>` | Query session status (`prot = 0x00` — all resources unlocked) |
-| **`SHORT_UPLOAD` (`0xF4`)** | `F4 04 00 00 00 80 04 00` | `FF 00 00 00 AA` | Single-frame read of `1..7` bytes from `0x00048000` (`LE: 00 80 04 00`) |
+| **`SHORT_UPLOAD` (`0xF4`)** | `F4 04 00 00 00 80 04 00` | `FF 00 00 00 AA` | **Read (`ECU → PC`):** single-frame read of `1..7` B from `0x00048000` (`LE: 00 80 04 00`) |
 | **`SET_MTA` (`0xF6`)** | `F6 00 00 00 2C 07 E9 FE` | `FF` | Set `MTA` pointer (example: `0xFEE9072C` = `Xcp_ControlMode`) |
-| **`UPLOAD` (`0xF5`)** | `F5 10` | Stream of `FF <up to 7 B>...` | Block-upload `1..255` bytes starting at `MTA` (auto-incrementing) |
-| **`DOWNLOAD` (`0xF0`)** | `F0 04 <4 bytes>` | `FF` | Write `1..6` bytes to `RAM` at `MTA` (up to `12` B with `DOWNLOAD_NEXT 0xEF`) |
-| **`DOWNLOAD_MAX` (`0xEE`)** | `EE <7 bytes>` | `FF` | Write `7` bytes to `RAM` at `MTA` (auto-incrementing) |
+| **`UPLOAD` (`0xF5`)** | `F5 10` | Stream of `FF <up to 7 B>...` | **Read (`ECU → PC`):** block-read `1..255` B starting at `MTA` (auto-incrementing) |
+| **`DOWNLOAD` (`0xF0`)** | `F0 04 <4 bytes>` | `FF` | **Write (`PC → ECU`):** write `1..6` B to `RAM` at `MTA` (up to `12` B with `0xEF`) |
+| **`DOWNLOAD_MAX` (`0xEE`)** | `EE <7 bytes>` | `FF` | **Write (`PC → ECU`):** write `7` B to `RAM` at `MTA` (auto-incrementing) |
 | **`SYNCH` (`0xFC`)** | `FC` | `FE 00` | Resynchronize command processor (`ERR_CMD_SYNCH`) |
 | **`DISCONNECT` (`0xFE`)** | `FE` | `FF` | Cleanly close the `XCP` session |
 
