@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# OS / Editor metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Firmware dumps, containers & generated ODIS output
+*.bin
+*.frf
+*.odx
+*.odx-f
+*.pdx
+ODIS_*_READY*/
+unpacked*/
+patched*/
