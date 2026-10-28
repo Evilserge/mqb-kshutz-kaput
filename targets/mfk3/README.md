@@ -76,6 +76,36 @@
 
 ---
 
+## Протокол `XCP` на шине `CAN0` (инженерная шпаргалка)
+
+При включённой инженерной опции `--enable-xcp-can0` на частной шине **`CAN0`** (*Fusion CAN*, разъём `T12a`: пин `3 = CAN-H`, пин `4 = CAN-L`, `500 кбит/с`, классический CAN 2.0B — **отдельная пара от основной шины авто `CAN1` на пинах `1`/`2`!**) сразу после старта камеры поднимается стандартный стек **ASAM MCD-1 XCP v1.0** (`EB tresos Xcp`):
+
+* **CAN ID (`Extended 29-bit`):** запрос мастера **`0x1BFE7E01`** → ответ камеры **`0x1BFE7E00`**.
+* **Формат пакетов:** порядок байт адресов **`Little-Endian` (Intel)**, `MAX_CTO = 8` Б, `MAX_DTO = 8` Б, поддерживается блочное чтение (*Slave Block Mode*).
+* **Авторизация (`Seed & Key`):** **отсутствует** — команды `GET_SEED (0xF8)` и `UNLOCK (0xF7)` в прошивке отключены; полный доступ к чтению 32-битного пространства `RH850` (`CodeFlash`, `DataFlash`, `RAM`, `MMIO`) и записи в `RAM` открыт сразу после `CONNECT`.
+
+### Основные команды и готовые CAN-кадры
+
+| Команда (`PID`) | Запрос (`0x1BFE7E01`) | Ответ (`0x1BFE7E00`) | Назначение |
+| :--- | :--- | :--- | :--- |
+| **`CONNECT` (`0xFF`)** | `FF 00` | `FF 04 40 08 08 00 01 01` | Открыть сессию (`Mode = 00`; `0x40` = Intel LE + Slave Block Mode, `CTO/DTO = 8`, XCP `1.0`) |
+| **`GET_STATUS` (`0xFD`)** | `FD` | `FF <sess> 00 00 <cfg_LE>` | Проверить статус сессии (`prot = 0x00` — ресурсы разблокированы) |
+| **`SHORT_UPLOAD` (`0xF4`)** | `F4 04 00 00 00 80 04 00` | `FF 00 00 00 AA` | Прочитать `1..7` байт за один кадр с адреса `0x00048000` (`LE: 00 80 04 00`) |
+| **`SET_MTA` (`0xF6`)** | `F6 00 00 00 2C 07 E9 FE` | `FF` | Установить указатель `MTA` (пример: `0xFEE9072C` = `Xcp_ControlMode`) |
+| **`UPLOAD` (`0xF5`)** | `F5 10` | Серия `FF <до 7 байт>...` | Потоково вычитать `1..255` байт подряд с `MTA` (с автоинкрементом) |
+| **`DOWNLOAD` (`0xF0`)** | `F0 04 <4 байта>` | `FF` | Записать `1..6` байт в `RAM` по `MTA` (до `12` Б со связкой `DOWNLOAD_NEXT 0xEF`) |
+| **`DOWNLOAD_MAX` (`0xEE`)** | `EE <7 байт>` | `FF` | Записать ровно `7` байт в `RAM` по `MTA` с автоинкрементом |
+| **`SYNCH` (`0xFC`)** | `FC` | `FE 00` | Сброс и ресинхронизация очереди команд (`ERR_CMD_SYNCH`) |
+| **`DISCONNECT` (`0xFE`)** | `FE` | `FF` | Корректно закрыть сессию `XCP` |
+
+* **Дополнительно поддерживаются:** `GET_COMM_MODE_INFO (0xFB)`, `GET_ID (0xFA)`, `TRANSPORT_LAYER_CMD (0xF2)` и полный набор динамических таблиц измерений **`Dynamic DAQ`** (`FREE_DAQ 0xD6`, `ALLOC_DAQ 0xD5`, `ALLOC_ODT 0xD4`, `ALLOC_ODT_ENTRY 0xD3`, `SET_DAQ_PTR 0xE2`, `WRITE_DAQ 0xE1`, `SET_DAQ_LIST_MODE 0xE0`, `GET_DAQ_LIST_MODE 0xDF`, `START_STOP_DAQ_LIST 0xDE`, `START_STOP_SYNCH 0xDD`, `GET_DAQ_CLOCK 0xDC`, `GET_DAQ_PROCESSOR_INFO 0xDA`, `GET_DAQ_RESOLUTION_INFO 0xD9`, `GET_DAQ_EVENT_INFO 0xD7`). Команды перепрошивки флеша по XCP (`PROGRAM_* 0xCF..0xD2`) в прошивке отключены.
+* **Спецификация и готовые клиенты:**
+  * [ASAM MCD-1 XCP Official Wiki](https://www.asam.net/standards/detail/mcd-1-xcp/wiki/)
+  * [Vector — XCP Reference Book](https://www.vector.com/int/en/know-how/protocols/xcp-measurement-and-calibration-protocol/xcp-book/)
+  * [pyXCP — Python XCP Master Library (`christoph2/pyxcp`)](https://github.com/christoph2/pyxcp)
+
+---
+
 ## Примеры CLI для `mfk3`
 
 ```bash
