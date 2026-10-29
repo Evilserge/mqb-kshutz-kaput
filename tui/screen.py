@@ -53,6 +53,33 @@ class TuiScreen:
     def enter(self) -> None:
         if self._active:
             return
+        
+        # Fix for ANSI decoding and escape strings in CMD and other old terminals
+        if os.name == "nt":
+            import ctypes
+            from ctypes import wintypes
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.GetStdHandle.argtypes = [wintypes.DWORD]
+            kernel32.GetStdHandle.restype = wintypes.HANDLE
+            kernel32.GetConsoleMode.argtypes = [
+                wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)
+            ]
+            kernel32.SetConsoleMode.argtypes = [
+                wintypes.HANDLE, wintypes.DWORD
+            ]
+
+            handle = kernel32.GetStdHandle(-11)
+            mode = wintypes.DWORD()
+
+            if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                raise ctypes.WinError(ctypes.get_last_error())
+
+            if not kernel32.SetConsoleMode(
+                handle, mode.value | 0x0001 | 0x0004
+            ):
+                raise ctypes.WinError(ctypes.get_last_error())
+
         if _HAS_TERMIOS and sys.stdin.isatty():
             fd = sys.stdin.fileno()
             self._fd = fd
